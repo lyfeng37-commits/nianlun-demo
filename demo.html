@@ -675,6 +675,22 @@
     color: #fff;
   }
 
+  .demo-guide-task {
+    margin-top: 10px;
+    color: rgba(245,214,142,0.95);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .demo-guide-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .demo-guide-btn.primary:disabled {
+    border-color: rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.08);
+  }
   /* 年轮视图 */
   .rings-view {
     display: none;
@@ -3822,6 +3838,7 @@
       </div>
       <div class="demo-guide-title" id="demoGuideTitle">家族年轮</div>
       <div class="demo-guide-text" id="demoGuideText">先看家族成员如何分布在不同代际，离开的人会化作外圈流星。</div>
+      <div class="demo-guide-task" id="demoGuideTask">请先完成当前操作</div>
       <div class="demo-guide-actions">
         <button class="demo-guide-btn" onclick="exitDemoGuide()">退出</button>
         <button class="demo-guide-btn" onclick="previousDemoGuideStep()">上一步</button>
@@ -4244,6 +4261,8 @@ let compareMode = 'parallel';
 let selectedCompareIds = [];
 let demoGuideActive = false;
 let demoGuideIndex = 0;
+let demoGuideStepDone = false;
+let demoGuideNavigating = false;
 let selectedEmoji = '👴';
 let uploadedPhoto = null;
 let selectedHistoryEvents = [];
@@ -4732,6 +4751,7 @@ function renderHomeDashboard({ totalEvents, generations, deceasedCount }) {
 // ===== 更新首页内容 =====
 function updateHomePage() {
   const hasPersons = hasFamilyData();
+  const isDemo = Boolean(window.appData && window.appData.isDemo);
   const heroTitle = document.getElementById('heroTitle');
   const heroSlogan = document.getElementById('heroSlogan');
   const heroQuote = document.getElementById('heroQuote');
@@ -4746,22 +4766,26 @@ function updateHomePage() {
     const totalEvents = window.appData.persons.reduce((sum, p) => sum + p.events.filter(e => !e.isHistory).length, 0);
     const generations = new Set(window.appData.persons.map(p => p.generation).filter(Boolean)).size;
 
-    heroTitle.textContent = '继续记录你的家族';
-    heroSlogan.innerHTML = `最近的记忆、待补的细节<br>都可以从这里继续`;
-    heroQuote.innerHTML = `首页负责提醒下一步。<br>真正的年轮、时间轴和代际对比，<br>都在家族页里展开。`;
+    heroTitle.textContent = isDemo ? '正在查看示例家族' : '继续记录你的家族';
+    heroSlogan.innerHTML = isDemo
+      ? '这是一套用于演示的样板数据<br>可以看路线，也可以清空后记录自己的家人'
+      : '最近的记忆、待补的细节<br>都可以从这里继续';
+    heroQuote.innerHTML = isDemo
+      ? '示例负责帮你快速理解。<br>真正使用时，数据只保存在你的本地浏览器。'
+      : '首页负责提醒下一步。<br>真正的年轮、时间轴和代际对比，<br>都在家族页里展开。';
     heroAction.innerHTML = `
       <div class="hero-action-row">
         <div class="hero-action-item">
           <button class="btn-start" onclick="startCompetitionDemo()">演示路线</button>
-          <span class="hero-action-note">按步骤讲解界面和核心亮点</span>
+          <span class="hero-action-note">按步骤操作，理解三个核心功能</span>
         </div>
         <div class="hero-action-item">
           <button class="btn-secondary" onclick="loadDemoFamily()">查看示例</button>
-          <span class="hero-action-note">载入一套完整样板数据</span>
+          <span class="hero-action-note">重新载入完整样板数据</span>
         </div>
         <div class="hero-action-item">
-          <button class="btn-secondary" onclick="showAddPersonModal()">添加家人</button>
-          <span class="hero-action-note">正式开始记录自己的家人</span>
+          <button class="btn-secondary" onclick="${isDemo ? 'clearDemoAndStart()' : 'showAddPersonModal()'}">${isDemo ? '清空示例，记录我的家人' : '添加家人'}</button>
+          <span class="hero-action-note">${isDemo ? '清掉样板，正式开始自己的记录' : '继续补充自己的家族记录'}</span>
         </div>
         <div class="hero-action-item">
           <button class="btn-secondary" onclick="switchPage('family')">进入家族年轮</button>
@@ -4771,8 +4795,10 @@ function updateHomePage() {
       <p class="btn-start-sub">${window.appData.persons.length} 位家人 · ${totalEvents} 段记忆${deceasedCount > 0 ? ' · ' + deceasedCount + ' 道星轨' : ''}</p>
       <p class="privacy-note">🔒 所有数据仅保存在你本地浏览器中，不会上传到任何服务器</p>
     `;
-    valueTitle.textContent = '继续从这里补';
-    valueSubtitle.textContent = '快速看见最近记录和还没补全的家庭线索';
+    valueTitle.textContent = isDemo ? '示例里可以重点看什么' : '继续从这里补';
+    valueSubtitle.textContent = isDemo
+      ? '先理解年轮、家族时间轴、代际对比，再清空示例开始自己的记录'
+      : '快速看见最近记录和还没补全的家庭线索';
     if (homeNav) homeNav.textContent = '概览';
     valueCards.innerHTML = renderHomeDashboard({ totalEvents, generations, deceasedCount });
     return;
@@ -4799,63 +4825,89 @@ function updateHomePage() {
     <p class="btn-start-sub">信息不完整也可以先保存，之后再慢慢补</p>
     <p class="privacy-note">🔒 所有数据仅保存在你本地浏览器中，不会上传到任何服务器</p>
   `;
-  valueTitle.textContent = '首页只做三件事';
-  valueSubtitle.textContent = '开始、继续、演示，不和开场介绍重复';
+  valueTitle.textContent = '核心功能只有三个';
+  valueSubtitle.textContent = '先看懂它能解决什么，再决定从谁开始记录';
   if (homeNav) homeNav.textContent = '开始';
   valueCards.innerHTML = `
     <div class="value-card">
-      <div class="value-card-icon">👤</div>
-      <div class="value-card-name">家人</div>
+      <div class="value-card-icon">◎</div>
+      <div class="value-card-name">年轮</div>
       <div class="value-card-desc">
-        先添加一位家人。<br>
-        名字、关系、年代，<br>
-        不完整也可以开始。
+        家人是年轮上的星点。<br>
+        离世的人化作外圈流星，<br>
+        仍然围绕这个家。
       </div>
     </div>
     <div class="value-card">
-      <div class="value-card-icon">✦</div>
-      <div class="value-card-name">记忆</div>
+      <div class="value-card-icon">▤</div>
+      <div class="value-card-name">家族时间轴</div>
       <div class="value-card-desc">
-        给家人补一段经历。<br>
-        重要时刻、普通日子，<br>
-        都能成为年轮纹理。
+        把每个人的故事合并起来。<br>
+        同一件家庭大事，<br>
+        不用在每个人那里重复写。
       </div>
     </div>
     <div class="value-card">
       <div class="value-card-icon">↔</div>
       <div class="value-card-name">代际对比</div>
       <div class="value-card-desc">
-        当记录变多，<br>
-        就能看见几代人<br>
-        在同一年龄的不同处境。
+        把几代人放到同一年龄。<br>
+        看见代沟背后的时代、<br>
+        家庭角色和生活条件。
       </div>
     </div>
   `;
 }
 
-function loadDemoFamily() {
-  if (hasFamilyData()) {
-    const ok = confirm('载入示例家族会替换当前浏览器里的记录，确定继续吗？');
-    if (!ok) return;
-  }
-  window.appData = JSON.parse(JSON.stringify(defaultData));
-  hydrateDemoPhotos();
-  ensureBirthEvents();
-  ensureDeathEvents();
-  selectedCompareIds = ['p1', 'p3', 'p5'];
-  saveData();
+
+
+function refreshAllViews() {
   renderFamilyRings();
   renderPersonsList();
   renderFamilyTimeline();
   renderCompareChips();
   updateHomePage();
   updateIntroDestination();
+}
+
+function loadDemoData() {
+  window.appData = JSON.parse(JSON.stringify(defaultData));
+  window.appData.isDemo = true;
+  hydrateDemoPhotos();
+  ensureBirthEvents();
+  ensureDeathEvents();
+  selectedCompareIds = ['p1', 'p3', 'p5'];
+  saveData();
+  refreshAllViews();
+}
+
+function loadDemoFamily() {
+  if (hasFamilyData() && !window.appData.isDemo) {
+    const ok = confirm('载入示例家族会替换当前浏览器里的记录，确定继续吗？');
+    if (!ok) return;
+  }
+  loadDemoData();
   switchPage('family');
 }
 
-function createEmptyData() {
-  return { persons: [] };
+function clearDemoAndStart() {
+  if (hasFamilyData()) {
+    const ok = confirm('将清空当前示例数据，然后开始记录自己的家人，确定继续吗？');
+    if (!ok) return;
+  }
+  window.appData = createEmptyData();
+  selectedCompareIds = [];
+  saveData();
+  refreshAllViews();
+  switchPage('home');
+  showAddPersonModal();
 }
+
+function createEmptyData() {
+  return { persons: [], isDemo: false };
+}
+
+
 
 function createDemoPhoto(title, year) {
   const svg = `
@@ -5694,6 +5746,9 @@ function loadData() {
   } else {
     window.appData = createEmptyData();
   }
+  if (typeof window.appData.isDemo !== 'boolean') {
+    window.appData.isDemo = false;
+  }
   hydrateDemoPhotos();
   const birthEventsChanged = ensureBirthEvents();
   const deathEventsChanged = ensureDeathEvents();
@@ -5719,6 +5774,9 @@ function closePrivacyModal() {
 }
 
 function saveData(userInitiated) {
+  if (userInitiated && window.appData) {
+    window.appData.isDemo = false;
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(window.appData));
   // 用户主动保存时（添加/修改/删除数据），检查是否需要显示隐私提示
   if (userInitiated) {
@@ -5769,23 +5827,21 @@ function switchFamilyView(view) {
   } else if (view === 'timeline') {
     renderFamilyTimeline();
   }
+
+  if (demoGuideActive && !demoGuideNavigating) {
+    if (view === 'timeline') completeDemoGuideAction('switch-timeline');
+  }
 }
 
 function ensureDemoDataForRoute() {
-  if (hasFamilyData()) return true;
-  if (!confirm('演示路线需要有家族数据。是否载入示例家族继续演示？')) return false;
+  if (!hasFamilyData() || (window.appData && window.appData.isDemo)) {
+    loadDemoData();
+    return true;
+  }
 
-  window.appData = JSON.parse(JSON.stringify(defaultData));
-  ensureBirthEvents();
-  ensureDeathEvents();
-  selectedCompareIds = ['p1', 'p3', 'p5'];
-  saveData();
-  renderFamilyRings();
-  renderPersonsList();
-  renderFamilyTimeline();
-  renderCompareChips();
-  updateHomePage();
-  updateIntroDestination();
+  const ok = confirm('演示路线会载入示例数据，并替换当前浏览器里的记录。确定继续吗？');
+  if (!ok) return false;
+  loadDemoData();
   return true;
 }
 
@@ -5805,19 +5861,28 @@ function prepareDemoCompareSelection() {
 
 const demoGuideSteps = [
   {
-    view: 'rings',
+    startView: 'rings',
+    viewClass: 'rings',
+    requiredAction: 'open-person',
     title: '第一步：认识家族年轮',
-    text: '中间是一圈圈代际年轮，人物是年轮上的星点。鼠标移到星点可查看姓名、出生年和记录数量；点击星点进入这个人的时间轴。离世成员会化作外圈流星。'
+    text: '年轮代表代际，人物是年轮上的星点。离开的人会化作外圈流星，继续围绕这个家。',
+    task: '请点击任意一颗人物星点，进入这个人的时间轴。'
   },
   {
-    view: 'timeline',
-    title: '第二步：理解家族时间轴',
-    text: '这里把所有公开家庭事件合并到一条时间线上。共同事件只保存一条，但会同步出现在相关家人的时间轴里；右侧同年背景帮助理解那个年代。'
+    startView: 'rings',
+    viewClass: 'timeline',
+    requiredAction: 'switch-timeline',
+    title: '第二步：查看家族时间轴',
+    text: '家族时间轴会把公开的家庭事件合并到一起，同一件事不用在每个人那里重复写。',
+    task: '请点击上方“家族时间轴”。'
   },
   {
-    view: 'compare',
+    startView: 'compare',
+    viewClass: 'compare',
+    requiredAction: 'drag-age',
     title: '第三步：看代际对比',
-    text: '这里是核心亮点：拖动年龄滑杆，把爷爷、爸爸和我放到同一个年龄里比较。你会看到同样20岁，不同代人处在完全不同的时代。'
+    text: '代际对比把几代人放到同一个年龄，看到差异来自时代、家庭角色和生活条件。',
+    task: '请拖动年龄滑杆，看看同样年龄下几代人的故事变化。'
   }
 ];
 
@@ -5825,26 +5890,31 @@ function startCompetitionDemo() {
   if (!ensureDemoDataForRoute()) return;
   demoGuideActive = true;
   demoGuideIndex = 0;
+  demoGuideStepDone = false;
   applyDemoGuideStep();
 }
 
 function goDemoStep(view) {
-  if (!ensureDemoDataForRoute()) return;
-
   switchPage('family');
-  if (view === 'compare') {
-    prepareDemoCompareSelection();
-    compareMode = 'parallel';
-    document.getElementById('parallelBtn').classList.add('active');
-    document.getElementById('yearBtn').classList.remove('active');
-    renderCompareChips();
+  demoGuideNavigating = true;
+  try {
+    if (view === 'compare') {
+      prepareDemoCompareSelection();
+      compareMode = 'parallel';
+      document.getElementById('parallelBtn').classList.add('active');
+      document.getElementById('yearBtn').classList.remove('active');
+      renderCompareChips();
+    }
+    switchFamilyView(view);
+  } finally {
+    demoGuideNavigating = false;
   }
-  switchFamilyView(view);
 }
 
 function applyDemoGuideStep() {
   const step = demoGuideSteps[demoGuideIndex] || demoGuideSteps[0];
-  goDemoStep(step.view);
+  demoGuideStepDone = false;
+  goDemoStep(step.startView);
   renderDemoGuide();
 }
 
@@ -5857,16 +5927,31 @@ function renderDemoGuide() {
 
   const step = demoGuideSteps[demoGuideIndex] || demoGuideSteps[0];
   guide.classList.remove('guide-rings', 'guide-timeline', 'guide-compare');
-  guide.classList.add(`guide-${step.view}`);
+  guide.classList.add(`guide-${step.viewClass}`);
   document.getElementById('demoGuideStep').textContent = `${demoGuideIndex + 1} / ${demoGuideSteps.length}`;
   document.getElementById('demoGuideTitle').textContent = step.title;
   document.getElementById('demoGuideText').textContent = step.text;
-  document.getElementById('demoGuideNextBtn').textContent =
-    demoGuideIndex >= demoGuideSteps.length - 1 ? '完成' : '下一步';
+
+  const task = document.getElementById('demoGuideTask');
+  if (task) {
+    task.textContent = demoGuideStepDone ? '已完成，可以继续下一步。' : step.task;
+  }
+
+  const nextBtn = document.getElementById('demoGuideNextBtn');
+  nextBtn.textContent = demoGuideIndex >= demoGuideSteps.length - 1 ? '完成' : '下一步';
+  nextBtn.disabled = !demoGuideStepDone;
+}
+
+function completeDemoGuideAction(action) {
+  if (!demoGuideActive || demoGuideNavigating) return;
+  const step = demoGuideSteps[demoGuideIndex];
+  if (!step || step.requiredAction !== action || demoGuideStepDone) return;
+  demoGuideStepDone = true;
+  renderDemoGuide();
 }
 
 function nextDemoGuideStep() {
-  if (!demoGuideActive) return;
+  if (!demoGuideActive || !demoGuideStepDone) return;
   if (demoGuideIndex >= demoGuideSteps.length - 1) {
     exitDemoGuide();
     return;
@@ -5883,10 +5968,12 @@ function previousDemoGuideStep() {
 
 function exitDemoGuide() {
   demoGuideActive = false;
+  demoGuideStepDone = false;
   renderDemoGuide();
-  // 完成演示后返回概览（首页）
   switchPage('home');
 }
+
+
 
 // ===== 年轮视图 =====
 function renderFamilyRings() {
@@ -6243,6 +6330,7 @@ function renderFamilyTimeline() {
 
 // ===== 个人时间轴完整视图 =====
 function openPersonTimeline(personId) {
+  completeDemoGuideAction('open-person');
   currentPersonId = personId;
   const person = window.appData.persons.find(p => p.id === personId);
   if (!person) return;
@@ -7104,6 +7192,10 @@ function syncPersonAutoEvents(person) {
 }
 
 function showAddPersonModal() {
+  if (window.appData && window.appData.isDemo && hasFamilyData()) {
+    clearDemoAndStart();
+    return;
+  }
   editingPersonId = null;
   const emptyFamily = !hasFamilyData();
   document.getElementById('personModalTitle').textContent = '添加家人';
@@ -7902,6 +7994,7 @@ function renderParallelCompare(container, persons) {
 }
 
 function updateParallelView(...personIds) {
+  completeDemoGuideAction('drag-age');
   const age = parseInt(document.getElementById('ageSlider').value, 10);
   document.getElementById('parallelAge').textContent = age;
   
